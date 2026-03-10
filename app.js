@@ -3,17 +3,75 @@
 
 const results = { dcf: null, pe: null, ddm: null };
 
-// stockprices.dev - no API key, CORS enabled, works from browser
+// 多來源取得美股報價（依序嘗試）
 async function fetchUSStockPrice(symbol) {
-  for (const path of ['stocks', 'etfs']) {
-    const url = `https://stockprices.dev/api/${path}/${encodeURIComponent(symbol)}`;
-    const res = await fetch(url);
+  const sources = [
+    () => fetchStockPricesDev(symbol),
+    () => fetchYahooViaProxy(symbol)
+  ];
+  const workerUrl = localStorage.getItem('stockProxyUrl');
+  if (workerUrl) sources.push(() => fetchWorkerProxy(symbol));
+  for (const fn of sources) {
+    try {
+      const data = await fn();
+      if (data && data.Price != null) return data;
+    } catch (_) { continue; }
+  }
+  throw new Error('無法取得報價，請手動輸入或設定代理（見說明）');
+}
+
+async function fetchStockPricesDev(symbol) {
+  for (const p of ['stocks', 'etfs']) {
+    const res = await fetch(`https://stockprices.dev/api/${p}/${symbol}`);
     if (res.ok) {
-      const data = await res.json();
-      if (data.Price != null) return data;
+      const d = await res.json();
+      if (d.Price != null) return { Price: d.Price, Name: d.Name };
     }
   }
-  throw new Error('無此代碼或服務暫時無法回應');
+  throw new Error();
+}
+
+async function fetchYahooViaProxy(symbol) {
+  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail,defaultKeyStatistics`;
+  const proxies = [
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://corsproxy.io/?' + encodeURIComponent(u),
+    (u) => 'https://api.cors.lol/?url=' + encodeURIComponent(u)
+  ];
+  let data;
+  for (const proxy of proxies) {
+    try {
+      const res = await fetch(proxy(url));
+      if (!res.ok) continue;
+      data = await res.json();
+      if (data?.quoteSummary) break;
+    } catch (_) { continue; }
+  }
+  if (!data?.quoteSummary) throw new Error();
+  const r = data?.quoteSummary?.result?.[0];
+  if (!r) throw new Error();
+  const price = r.price?.regularMarketPrice?.raw ?? r.price?.regularMarketPrice;
+  const name = r.price?.shortName || r.price?.longName || symbol;
+  const eps = r.defaultKeyStatistics?.trailingEps?.raw ?? r.defaultKeyStatistics?.trailingEps;
+  const pe = r.summaryDetail?.trailingPE?.raw ?? r.summaryDetail?.trailingPE;
+  const divY = r.summaryDetail?.dividendYield?.raw ?? r.summaryDetail?.dividendYield;
+  const divR = r.summaryDetail?.dividendRate?.raw ?? r.summaryDetail?.dividendRate;
+  return {
+    Price: price ? parseFloat(price) : null,
+    Name: name,
+    EPS: eps != null ? parseFloat(eps) : null,
+    PERatio: pe != null ? parseFloat(pe) : null,
+    DividendYield: divY != null ? parseFloat(divY) : null,
+    DividendRate: divR != null ? parseFloat(divR) : null
+  };
+}
+
+async function fetchWorkerProxy(symbol) {
+  const base = localStorage.getItem('stockProxyUrl');
+  if (!base) throw new Error();
+  const res = await fetch(`${base}?symbol=${encodeURIComponent(symbol)}`);
+  if (!res.ok) throw new Error();
+  return await res.json();
 }
 
 // Currency & market
@@ -54,7 +112,13 @@ async function fetchUSStock() {
     const price = parseFloat(data.Price);
     document.getElementById('stockName').value = data.Name || symbol;
     document.getElementById('currentPrice').value = price.toFixed(2);
-    // EPS、本益比、股利需手動輸入（此 API 僅提供股價與名稱）
+    if (data.EPS != null) document.getElementById('pe-eps').value = data.EPS.toFixed(2);
+    if (data.PERatio != null) document.getElementById('pe-ratio').value = Math.round(data.PERatio);
+    if (data.DividendRate != null && data.DividendRate > 0) {
+      document.getElementById('ddm-dividend').value = data.DividendRate.toFixed(2);
+    } else if (data.DividendYield != null && data.DividendYield > 0 && price) {
+      document.getElementById('ddm-dividend').value = (price * data.DividendYield).toFixed(2);
+    }
   } catch (err) {
     alert('取得失敗：' + (err.message || '請檢查代碼或稍後再試'));
   } finally {
@@ -64,6 +128,11 @@ async function fetchUSStock() {
 }
 
 document.getElementById('btnFetchUS').addEventListener('click', fetchUSStock);
+
+document.getElementById('yahooLink').addEventListener('click', (e) => {
+  const s = document.getElementById('usSymbol').value?.trim() || 'AAPL';
+  e.target.href = 'https://finance.yahoo.com/quote/' + encodeURIComponent(s);
+});
 
 document.addEventListener('DOMContentLoaded', updateCurrencyUI);
 
