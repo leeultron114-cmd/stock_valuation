@@ -36,6 +36,7 @@ function updateCurrencyUI() {
   document.getElementById('dcf-fcf-unit').textContent = `(百萬 ${unit})`;
   document.getElementById('ddm-div-unit').textContent = `(${unit})`;
   document.getElementById('usSymbolGroup').style.display = isUS ? 'block' : 'none';
+  document.getElementById('stockNameGroup').style.display = isUS ? 'none' : 'block';
 }
 
 document.getElementById('market').addEventListener('change', updateCurrencyUI);
