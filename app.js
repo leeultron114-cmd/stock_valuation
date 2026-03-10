@@ -2,7 +2,29 @@
 // DCF, P/E, DDM models | 台股 + 美股
 
 const results = { dcf: null, pe: null, ddm: null };
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+const CORS_PROXIES = [
+  (url) => url,  // 先嘗試直接請求
+  (url) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+  (url) => 'https://corsproxy.io/?' + encodeURIComponent(url)
+];
+
+async function fetchWithRetry(url) {
+  for (const proxy of CORS_PROXIES) {
+    try {
+      const res = await fetch(proxy(url), { mode: 'cors' });
+      if (!res.ok) continue;
+      const text = await res.text();
+      const data = JSON.parse(text);
+      if (data.Note) throw new Error('API 額度已用完，請明天再試（免費版約 25 次/天）');
+      if (data['Error Message']) throw new Error(data['Error Message']);
+      return data;
+    } catch (e) {
+      if (e.message && (e.message.includes('額度') || e.message.includes('Error'))) throw e;
+      continue;
+    }
+  }
+  throw new Error('無法取得資料，請檢查網路或稍後再試');
+}
 
 // Currency & market
 function getCurrency() {
@@ -49,17 +71,14 @@ async function fetchUSStock() {
     const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
     const overviewUrl = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${apiKey}`;
 
-    const [quoteRes, overviewRes] = await Promise.all([
-      fetch(CORS_PROXY + encodeURIComponent(quoteUrl)),
-      fetch(CORS_PROXY + encodeURIComponent(overviewUrl))
+    const [quoteData, overviewData] = await Promise.all([
+      fetchWithRetry(quoteUrl),
+      fetchWithRetry(overviewUrl)
     ]);
-
-    const quoteData = await quoteRes.json();
-    const overviewData = await overviewRes.json();
 
     const quote = quoteData['Global Quote'];
     if (!quote || !quote['05. price']) {
-      throw new Error(quoteData.Note || quoteData['Error Message'] || '無法取得報價');
+      throw new Error(quoteData.Note || quoteData['Error Message'] || '無此代碼或無法取得報價');
     }
 
     const price = parseFloat(quote['05. price']);

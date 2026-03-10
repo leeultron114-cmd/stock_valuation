@@ -134,6 +134,13 @@ body {
   flex: 1;
 }
 
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  display: block;
+}
+
 .input-group label a {
   color: var(--accent);
   margin-left: 0.25rem;
