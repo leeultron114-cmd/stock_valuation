@@ -2,22 +2,15 @@
 // DCF, P/E, DDM models | 台股 + 美股
 
 const results = { dcf: null, pe: null, ddm: null };
-const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
-async function fetchViaProxy(url) {
-  const proxies = [
-    (u) => u,
-    (u) => CORS_PROXY + encodeURIComponent(u),
-    (u) => 'https://corsproxy.io/?' + encodeURIComponent(u)
-  ];
-  for (const p of proxies) {
-    try {
-      const res = await fetch(p(url), { mode: 'cors' });
-      if (!res.ok) continue;
-      return await res.json();
-    } catch (_) { continue; }
-  }
-  throw new Error('無法連線，請檢查網路或稍後再試');
+// stockprices.dev - no API key, CORS enabled, works from browser
+async function fetchUSStockPrice(symbol) {
+  const url = `https://stockprices.dev/api/stocks/${encodeURIComponent(symbol)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('無此代碼或服務暫時無法回應');
+  const data = await res.json();
+  if (!data.Price && data.Price !== 0) throw new Error('無法取得股價');
+  return data;
 }
 
 // Currency & market
@@ -41,7 +34,7 @@ function updateCurrencyUI() {
 
 document.getElementById('market').addEventListener('change', updateCurrencyUI);
 
-// US stock fetch from Yahoo Finance (no API key needed)
+// US stock fetch (stockprices.dev - no API key, CORS enabled)
 async function fetchUSStock() {
   const symbol = document.getElementById('usSymbol').value?.trim().toUpperCase();
   if (!symbol) {
@@ -54,32 +47,11 @@ async function fetchUSStock() {
   btn.textContent = '取得中...';
 
   try {
-    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail,defaultKeyStatistics`;
-    const data = await fetchViaProxy(url);
-
-    const result = data?.quoteSummary?.result?.[0];
-    if (!result) throw new Error('無此代碼或無法取得資料');
-
-    const price = result.price?.regularMarketPrice?.raw ?? result.price?.regularMarketPrice;
-    const name = result.price?.shortName || result.price?.longName || symbol;
-    if (!price) throw new Error('無法取得股價');
-
-    document.getElementById('stockName').value = name;
-    document.getElementById('currentPrice').value = parseFloat(price).toFixed(2);
-
-    const eps = result.defaultKeyStatistics?.trailingEps?.raw ?? result.defaultKeyStatistics?.trailingEps;
-    if (eps != null) document.getElementById('pe-eps').value = parseFloat(eps).toFixed(2);
-
-    const pe = result.summaryDetail?.trailingPE?.raw ?? result.summaryDetail?.trailingPE;
-    if (pe != null) document.getElementById('pe-ratio').value = Math.round(parseFloat(pe));
-
-    const divYield = result.summaryDetail?.dividendYield?.raw ?? result.summaryDetail?.dividendYield;
-    const divRate = result.summaryDetail?.dividendRate?.raw ?? result.summaryDetail?.dividendRate;
-    if (divRate != null && divRate > 0) {
-      document.getElementById('ddm-dividend').value = parseFloat(divRate).toFixed(2);
-    } else if (divYield != null && divYield > 0) {
-      document.getElementById('ddm-dividend').value = (parseFloat(price) * parseFloat(divYield)).toFixed(2);
-    }
+    const data = await fetchUSStockPrice(symbol);
+    const price = parseFloat(data.Price);
+    document.getElementById('stockName').value = data.Name || symbol;
+    document.getElementById('currentPrice').value = price.toFixed(2);
+    // EPS、本益比、股利需手動輸入（此 API 僅提供股價與名稱）
   } catch (err) {
     alert('取得失敗：' + (err.message || '請檢查代碼或稍後再試'));
   } finally {

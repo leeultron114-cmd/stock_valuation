@@ -5,7 +5,7 @@
 ## 功能
 
 - **台股 (NTD) + 美股 (USD)** 雙市場支援
-- **美股即時報價**：直接從 Yahoo Finance 取得價格、EPS、股利（無需 API Key）
+- **美股即時報價**：從 [stockprices.dev](https://stockprices.dev) 取得股價與名稱（無需 API Key，支援 CORS）
 - **DCF 現金流折現**：以自由現金流、成長率、折現率預測企業價值
 - **本益比法**：股價 = EPS × 合理 P/E
 - **股利折現模型 (Gordon Growth)**：P = D / (r - g)
