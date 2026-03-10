@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>股票估值計算器 | Stock Valuation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">📈</span>
+        <h1>股票估值計算器</h1>
+        <p class="subtitle">DCF · 本益比 · 股利折現模型</p>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Stock Info Section -->
+      <section class="card stock-info">
+        <h2>股票基本資訊</h2>
+        <div class="market-row">
+          <div class="input-group">
+            <label>市場</label>
+            <select id="market">
+              <option value="tw">台股 (NTD)</option>
+              <option value="us">美股 (USD)</option>
+            </select>
+          </div>
+          <div class="input-group" id="usSymbolGroup" style="display:none">
+            <label>美股代碼</label>
+            <div class="symbol-fetch">
+              <input type="text" id="usSymbol" placeholder="例：AAPL, MSFT, GOOGL">
+              <button type="button" class="btn-fetch" id="btnFetchUS">取得報價</button>
+            </div>
+          </div>
+        </div>
+        <div class="api-key-row" id="apiKeyRow" style="display:none">
+          <div class="input-group flex-1">
+            <label>Alpha Vantage API Key <a href="https://www.alphavantage.co/support/#api-key" target="_blank" rel="noopener">免費申請</a></label>
+            <input type="password" id="apiKey" placeholder="輸入 API Key 後自動儲存">
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>股票名稱 / 代碼</label>
+            <input type="text" id="stockName" placeholder="例：台積電 (2330) 或 Apple (AAPL)">
+          </div>
+          <div class="input-group">
+            <label>當前股價 <span id="currencyLabel">(NTD)</span></label>
+            <input type="number" id="currentPrice" placeholder="例：580 或 175.5" step="0.01">
+          </div>
+        </div>
+      </section>
+
+      <!-- Valuation Models Tabs -->
+      <div class="tabs">
+        <button class="tab active" data-tab="dcf">DCF 現金流折現</button>
+        <button class="tab" data-tab="pe">本益比法</button>
+        <button class="tab" data-tab="ddm">股利折現模型</button>
+      </div>
+
+      <!-- DCF Panel -->
+      <section class="card panel active" id="dcf-panel">
+        <h2>DCF 現金流折現法</h2>
+        <p class="model-desc">基於未來自由現金流折現至今日價值</p>
+        <div class="inputs-grid">
+          <div class="input-group">
+            <label>自由現金流 (FCF) 今年 <span class="unit-hint" id="dcf-fcf-unit">(百萬 NTD)</span></label>
+            <input type="number" id="dcf-fcf" placeholder="例：500000 或 100000" step="1000">
+          </div>
+          <div class="input-group">
+            <label>成長率 (%)</label>
+            <input type="number" id="dcf-growth" placeholder="例：8" step="0.1">
+          </div>
+          <div class="input-group">
+            <label>折現率 / WACC (%)</label>
+            <input type="number" id="dcf-wacc" placeholder="例：10" step="0.1">
+          </div>
+          <div class="input-group">
+            <label>預測年數</label>
+            <input type="number" id="dcf-years" placeholder="例：10" value="10">
+          </div>
+          <div class="input-group">
+            <label>流通股數 (百萬股)</label>
+            <input type="number" id="dcf-shares" placeholder="例：25900 或 15500" step="100">
+          </div>
+        </div>
+        <button class="btn-calculate" onclick="calculateDCF()">計算 DCF 估值</button>
+      </section>
+
+      <!-- P/E Panel -->
+      <section class="card panel" id="pe-panel">
+        <h2>本益比法</h2>
+        <p class="model-desc">股價 = EPS × 合理本益比</p>
+        <div class="inputs-grid">
+          <div class="input-group">
+            <label>每股盈餘 (EPS)</label>
+            <input type="number" id="pe-eps" placeholder="例：32.5" step="0.01">
+          </div>
+          <div class="input-group">
+            <label>合理本益比 (P/E)</label>
+            <input type="number" id="pe-ratio" placeholder="例：18" step="0.5">
+          </div>
+        </div>
+        <button class="btn-calculate" onclick="calculatePE()">計算本益比估值</button>
+      </section>
+
+      <!-- DDM Panel -->
+      <section class="card panel" id="ddm-panel">
+        <h2>股利折現模型 (Gordon Growth)</h2>
+        <p class="model-desc">股價 = 預期股利 ÷ (折現率 - 成長率)</p>
+        <div class="inputs-grid">
+          <div class="input-group">
+            <label>預期年度股利 <span id="ddm-div-unit">(NTD)</span></label>
+            <input type="number" id="ddm-dividend" placeholder="例：12 或 0.96" step="0.01">
+          </div>
+          <div class="input-group">
+            <label>折現率 (%)</label>
+            <input type="number" id="ddm-rate" placeholder="例：9" step="0.1">
+          </div>
+          <div class="input-group">
+            <label>股利成長率 (%)</label>
+            <input type="number" id="ddm-growth" placeholder="例：4" step="0.1">
+          </div>
+        </div>
+        <button class="btn-calculate" onclick="calculateDDM()">計算 DDM 估值</button>
+      </section>
+
+      <!-- Results Section -->
+      <section class="card results-card">
+        <h2>估值結果</h2>
+        <div class="results-grid">
+          <div class="result-item">
+            <span class="result-label">DCF 合理價</span>
+            <span class="result-value" id="result-dcf">—</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">本益比合理價</span>
+            <span class="result-value" id="result-pe">—</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">DDM 合理價</span>
+            <span class="result-value" id="result-ddm">—</span>
+          </div>
+        </div>
+        <div class="summary" id="summary">
+          <p>輸入數據並計算各模型估值</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>本工具僅供學習參考，不構成投資建議。投資有風險，請自行評估。</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
