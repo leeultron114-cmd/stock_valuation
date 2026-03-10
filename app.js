@@ -5,12 +5,15 @@ const results = { dcf: null, pe: null, ddm: null };
 
 // stockprices.dev - no API key, CORS enabled, works from browser
 async function fetchUSStockPrice(symbol) {
-  const url = `https://stockprices.dev/api/stocks/${encodeURIComponent(symbol)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('無此代碼或服務暫時無法回應');
-  const data = await res.json();
-  if (!data.Price && data.Price !== 0) throw new Error('無法取得股價');
-  return data;
+  for (const path of ['stocks', 'etfs']) {
+    const url = `https://stockprices.dev/api/${path}/${encodeURIComponent(symbol)}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.Price != null) return data;
+    }
+  }
+  throw new Error('無此代碼或服務暫時無法回應');
 }
 
 // Currency & market
