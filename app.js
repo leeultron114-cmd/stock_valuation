@@ -2,28 +2,22 @@
 // DCF, P/E, DDM models | 台股 + 美股
 
 const results = { dcf: null, pe: null, ddm: null };
-const CORS_PROXIES = [
-  (url) => url,  // 先嘗試直接請求
-  (url) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-  (url) => 'https://corsproxy.io/?' + encodeURIComponent(url)
-];
+const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
-async function fetchWithRetry(url) {
-  for (const proxy of CORS_PROXIES) {
+async function fetchViaProxy(url) {
+  const proxies = [
+    (u) => u,
+    (u) => CORS_PROXY + encodeURIComponent(u),
+    (u) => 'https://corsproxy.io/?' + encodeURIComponent(u)
+  ];
+  for (const p of proxies) {
     try {
-      const res = await fetch(proxy(url), { mode: 'cors' });
+      const res = await fetch(p(url), { mode: 'cors' });
       if (!res.ok) continue;
-      const text = await res.text();
-      const data = JSON.parse(text);
-      if (data.Note) throw new Error('API 額度已用完，請明天再試（免費版約 25 次/天）');
-      if (data['Error Message']) throw new Error(data['Error Message']);
-      return data;
-    } catch (e) {
-      if (e.message && (e.message.includes('額度') || e.message.includes('Error'))) throw e;
-      continue;
-    }
+      return await res.json();
+    } catch (_) { continue; }
   }
-  throw new Error('無法取得資料，請檢查網路或稍後再試');
+  throw new Error('無法連線，請檢查網路或稍後再試');
 }
 
 // Currency & market
@@ -42,62 +36,51 @@ function updateCurrencyUI() {
   document.getElementById('dcf-fcf-unit').textContent = `(百萬 ${unit})`;
   document.getElementById('ddm-div-unit').textContent = `(${unit})`;
   document.getElementById('usSymbolGroup').style.display = isUS ? 'block' : 'none';
-  document.getElementById('apiKeyRow').style.display = isUS ? 'block' : 'none';
 }
 
 document.getElementById('market').addEventListener('change', updateCurrencyUI);
 
-// US stock fetch
+// US stock fetch from Yahoo Finance (no API key needed)
 async function fetchUSStock() {
   const symbol = document.getElementById('usSymbol').value?.trim().toUpperCase();
-  const apiKey = document.getElementById('apiKey').value?.trim() || localStorage.getItem('alphaVantageKey');
-
   if (!symbol) {
     alert('請輸入美股代碼（如 AAPL、MSFT）');
     return;
   }
-  if (!apiKey) {
-    alert('請先輸入 Alpha Vantage API Key。可至 alphavantage.co 免費申請。');
-    document.getElementById('apiKey').focus();
-    return;
-  }
 
-  localStorage.setItem('alphaVantageKey', apiKey);
   const btn = document.getElementById('btnFetchUS');
   btn.disabled = true;
   btn.textContent = '取得中...';
 
   try {
-    const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
-    const overviewUrl = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${symbol}&apikey=${apiKey}`;
+    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail,defaultKeyStatistics`;
+    const data = await fetchViaProxy(url);
 
-    const [quoteData, overviewData] = await Promise.all([
-      fetchWithRetry(quoteUrl),
-      fetchWithRetry(overviewUrl)
-    ]);
+    const result = data?.quoteSummary?.result?.[0];
+    if (!result) throw new Error('無此代碼或無法取得資料');
 
-    const quote = quoteData['Global Quote'];
-    if (!quote || !quote['05. price']) {
-      throw new Error(quoteData.Note || quoteData['Error Message'] || '無此代碼或無法取得報價');
-    }
+    const price = result.price?.regularMarketPrice?.raw ?? result.price?.regularMarketPrice;
+    const name = result.price?.shortName || result.price?.longName || symbol;
+    if (!price) throw new Error('無法取得股價');
 
-    const price = parseFloat(quote['05. price']);
-    document.getElementById('stockName').value = overviewData.Name || symbol;
-    document.getElementById('currentPrice').value = price.toFixed(2);
+    document.getElementById('stockName').value = name;
+    document.getElementById('currentPrice').value = parseFloat(price).toFixed(2);
 
-    if (overviewData.EPS && overviewData.EPS !== 'None') {
-      document.getElementById('pe-eps').value = parseFloat(overviewData.EPS).toFixed(2);
-    }
-    if (overviewData.PERatio && overviewData.PERatio !== 'None') {
-      document.getElementById('pe-ratio').value = Math.round(parseFloat(overviewData.PERatio));
-    }
-    if (overviewData.DividendYield && overviewData.DividendYield !== 'None') {
-      const divYield = parseFloat(overviewData.DividendYield); // 0.025 = 2.5%
-      const annualDiv = price * divYield;
-      document.getElementById('ddm-dividend').value = annualDiv.toFixed(2);
+    const eps = result.defaultKeyStatistics?.trailingEps?.raw ?? result.defaultKeyStatistics?.trailingEps;
+    if (eps != null) document.getElementById('pe-eps').value = parseFloat(eps).toFixed(2);
+
+    const pe = result.summaryDetail?.trailingPE?.raw ?? result.summaryDetail?.trailingPE;
+    if (pe != null) document.getElementById('pe-ratio').value = Math.round(parseFloat(pe));
+
+    const divYield = result.summaryDetail?.dividendYield?.raw ?? result.summaryDetail?.dividendYield;
+    const divRate = result.summaryDetail?.dividendRate?.raw ?? result.summaryDetail?.dividendRate;
+    if (divRate != null && divRate > 0) {
+      document.getElementById('ddm-dividend').value = parseFloat(divRate).toFixed(2);
+    } else if (divYield != null && divYield > 0) {
+      document.getElementById('ddm-dividend').value = (parseFloat(price) * parseFloat(divYield)).toFixed(2);
     }
   } catch (err) {
-    alert('取得失敗：' + (err.message || '請檢查代碼與 API Key'));
+    alert('取得失敗：' + (err.message || '請檢查代碼或稍後再試'));
   } finally {
     btn.disabled = false;
     btn.textContent = '取得報價';
@@ -106,12 +89,7 @@ async function fetchUSStock() {
 
 document.getElementById('btnFetchUS').addEventListener('click', fetchUSStock);
 
-// Load saved API key
-document.addEventListener('DOMContentLoaded', () => {
-  updateCurrencyUI();
-  const saved = localStorage.getItem('alphaVantageKey');
-  if (saved) document.getElementById('apiKey').value = saved;
-});
+document.addEventListener('DOMContentLoaded', updateCurrencyUI);
 
 // Tab switching
 document.querySelectorAll('.tab').forEach(tab => {

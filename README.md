@@ -5,7 +5,7 @@
 ## 功能
 
 - **台股 (NTD) + 美股 (USD)** 雙市場支援
-- **美股即時報價**：輸入 Alpha Vantage API Key 可自動取得美股價格、EPS、股利等
+- **美股即時報價**：直接從 Yahoo Finance 取得價格、EPS、股利（無需 API Key）
 - **DCF 現金流折現**：以自由現金流、成長率、折現率預測企業價值
 - **本益比法**：股價 = EPS × 合理 P/E
 - **股利折現模型 (Gordon Growth)**：P = D / (r - g)
@@ -16,7 +16,7 @@
 
 1. 用瀏覽器開啟 `index.html`
 2. 選擇市場（台股 / 美股）
-3. **美股**：輸入代碼（如 AAPL）並設定 [Alpha Vantage](https://www.alphavantage.co/support/#api-key) API Key，點「取得報價」自動帶入股價、EPS、股利
+3. **美股**：輸入代碼（如 AAPL），點「取得報價」從 Yahoo Finance 自動帶入股價、EPS、股利
 4. 填寫股票基本資訊（或由報價自動帶入）
 3. 選擇估值模型並輸入參數
 4. 點擊「計算」取得合理價
